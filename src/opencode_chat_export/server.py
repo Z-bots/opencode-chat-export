@@ -285,7 +285,7 @@ def cli_main():
     )
     parser.add_argument(
         "action", nargs="?", choices=["list", "export", "export-all"],
-        help="list: show sessions | export: export one session | export-all: all sessions",
+        help="list: show sessions (with project name) | export: export one session | export-all: all sessions",
     )
     parser.add_argument("session_id", nargs="?", help="Session ID or slug prefix")
     parser.add_argument("--limit", type=int, default=20, help="Max entries to show")
@@ -371,7 +371,7 @@ def main():
         return [
             types.Tool(
                 name="list_sessions",
-                description="List recent OpenCode chat sessions",
+                description="List recent OpenCode chat sessions (with project name)",
                 inputSchema={
                     "type": "object",
                     "properties": {
