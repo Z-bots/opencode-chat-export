@@ -245,6 +245,18 @@ def _safe_filename(text: str, max_len: int = 60) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", text)[:max_len]
 
 
+def _get_project_name(row: sqlite3.Row) -> str:
+    """Resolve project name from a session row (with LEFT JOINed project fields)."""
+    if row.get("project_name"):
+        return row["project_name"]
+    worktree = row.get("worktree") or ""
+    directory = row.get("directory") or ""
+    path = worktree or directory
+    if path:
+        return os.path.basename(os.path.normpath(path))
+    return "?"
+
+
 def _export_one(session: dict, out_dir: str) -> str:
     """Export one session to .md, return file path."""
     title = session.get("title", "Untitled")
@@ -285,18 +297,25 @@ def cli_main():
 
     if args.action == "list" or not args.action:
         c.execute(
-            "SELECT id, title, slug, agent, time_updated FROM session ORDER BY time_updated DESC LIMIT ?",
+            """SELECT s.id, s.title, s.slug, s.agent, s.time_updated,
+                      s.project_id, s.directory,
+                      p.name AS project_name, p.worktree
+               FROM session s
+               LEFT JOIN project p ON s.project_id = p.id
+               ORDER BY s.time_updated DESC LIMIT ?""",
             (args.limit,),
         )
         rows = c.fetchall()
-        print(f"{'#':>3}  {'ID':<14} {'Title':<40} {'Agent':<12} {'Updated'}")
-        print("-" * 85)
+        print(f"{'#':>3}  {'ID':<14} {'Project':<18} {'Title':<36} {'Agent':<12} {'Updated'}")
+        print("-" * 95)
         for i, r in enumerate(rows, 1):
             ts = r["time_updated"]
             ts_str = datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d %H:%M") if ts else "?"
+            proj = _get_project_name(r)
             print(
                 f"{i:>3}  {r['id'][:12]:<14} "
-                f"{(r['title'] or 'Untitled')[:40]:<40} "
+                f"{proj[:18]:<18} "
+                f"{(r['title'] or 'Untitled')[:36]:<36} "
                 f"{(r['agent'] or '?')[:12]:<12} {ts_str}"
             )
 
@@ -421,22 +440,28 @@ def main():
             conn = get_db()
             c = conn.cursor()
             c.execute(
-                """SELECT id, title, slug, model, agent, cost, time_updated
-                   FROM session ORDER BY time_updated DESC LIMIT ?""",
+                """SELECT s.id, s.title, s.slug, s.model, s.agent, s.cost,
+                          s.time_updated, s.project_id, s.directory,
+                          p.name AS project_name, p.worktree
+                   FROM session s
+                   LEFT JOIN project p ON s.project_id = p.id
+                   ORDER BY s.time_updated DESC LIMIT ?""",
                 (arguments.get("limit", 20),),
             )
             rows = c.fetchall()
             conn.close()
             lines = [
-                "| # | ID (prefix) | Title | Agent | Updated |",
-                "|---|------------|-------|-------|---------|",
+                "| # | ID (prefix) | Project | Title | Agent | Updated |",
+                "|---|------------|---------|-------|-------|---------|",
             ]
             for i, r in enumerate(rows, 1):
                 ts = r["time_updated"]
                 time_str = datetime.fromtimestamp(ts / 1000).strftime("%m-%d %H:%M") if ts else "?"
+                proj = _get_project_name(r)
                 lines.append(
-                    f"| {i} | `{r['id'][:12]}` | {(r['title'] or 'Untitled')[:40]} | "
-                    f"{(r['agent'] or '?')[:12]} | {time_str} |"
+                    f"| {i} | `{r['id'][:12]}` | {proj[:16]:<16} | "
+                    f"{(r['title'] or 'Untitled')[:36]:<36} | "
+                    f"{(r['agent'] or '?')[:12]:<12} | {time_str} |"
                 )
             return [types.TextContent(type="text", text="\n".join(lines))]
 
